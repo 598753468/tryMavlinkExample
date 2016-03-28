@@ -23,7 +23,7 @@
 #include "DebugHelpers.hpp"
 
 MarkerDetector::MarkerDetector(CameraCalibration calibration)
-    : m_minContourLengthAllowed(80)
+    : m_minContourLengthAllowed(40)
     , markerSize(100,100)
 {
     cv::Mat(3,3, CV_32F, const_cast<float*>(&calibration.getIntrinsic().data[0])).copyTo(camMatrix);
@@ -55,13 +55,23 @@ MarkerDetector::MarkerDetector(CameraCalibration calibration)
     m_markerCorners2d.push_back(cv::Point2f(0,markerSize.height-1));
 }
 
-void MarkerDetector::ChangeMarkerSize(float size)
+void MarkerDetector::ChangeMarkerSize(float largeSize,float smallSize)
 {
-    m_markerCorners3d.clear();
-    m_markerCorners3d.push_back(cv::Point3f(-size,-size,0));
-    m_markerCorners3d.push_back(cv::Point3f(+size,-size,0));
-    m_markerCorners3d.push_back(cv::Point3f(+size,+size,0));
-    m_markerCorners3d.push_back(cv::Point3f(-size,+size,0));
+//    m_markerCorners3d.clear();
+//    m_markerCorners3d.push_back(cv::Point3f(-size,-size,0));
+//    m_markerCorners3d.push_back(cv::Point3f(+size,-size,0));
+//    m_markerCorners3d.push_back(cv::Point3f(+size,+size,0));
+//    m_markerCorners3d.push_back(cv::Point3f(-size,+size,0));
+    largeMarker3d.clear();
+    largeMarker3d.push_back(cv::Point3f(-largeSize,-largeSize,0));
+    largeMarker3d.push_back(cv::Point3f(+largeSize,-largeSize,0));
+    largeMarker3d.push_back(cv::Point3f(+largeSize,+largeSize,0));
+    largeMarker3d.push_back(cv::Point3f(-largeSize,+largeSize,0));
+    smallMarker3d.clear();
+    smallMarker3d.push_back(cv::Point3f(-smallSize,-smallSize,0));
+    smallMarker3d.push_back(cv::Point3f(+smallSize,-smallSize,0));
+    smallMarker3d.push_back(cv::Point3f(+smallSize,+smallSize,0));
+    smallMarker3d.push_back(cv::Point3f(-smallSize,+smallSize,0));
 }
 
 void MarkerDetector::processFrame(const BGRAVideoFrame& frame)
@@ -84,7 +94,7 @@ const std::vector<Transformation>& MarkerDetector::getTransformations() const
 
 bool MarkerDetector::findMarkers(const BGRAVideoFrame& frame, std::vector<Marker>& detectedMarkers)
 {
-    cv::Mat bgraMat(frame.height, frame.width, CV_8UC4, frame.data, frame.stride);
+    cv::Mat bgraMat(frame.height, frame.width, CV_8UC3, frame.data, frame.stride);
 
     // Convert the image to grayscale
     prepareImage(bgraMat, m_grayscaleImage);
@@ -93,7 +103,7 @@ bool MarkerDetector::findMarkers(const BGRAVideoFrame& frame, std::vector<Marker
     performThreshold(m_grayscaleImage, m_thresholdImg);
 
     // Detect contours
-    findContours(m_thresholdImg, m_contours, m_grayscaleImage.cols / 5);
+    findContours(m_thresholdImg, m_contours, m_grayscaleImage.cols / 10);
 
     // Find closed contours that can be approximated with 4 points
     findCandidates(m_contours, detectedMarkers);
@@ -105,7 +115,7 @@ bool MarkerDetector::findMarkers(const BGRAVideoFrame& frame, std::vector<Marker
     estimatePosition(detectedMarkers);
 
     //sort by id
-    std::sort(detectedMarkers.begin(), detectedMarkers.end());
+    //std::sort(detectedMarkers.begin(), detectedMarkers.end());
     return false;
 }
 
@@ -299,10 +309,9 @@ void MarkerDetector::recognizeMarkers(const cv::Mat& grayscale, std::vector<Mark
             cv::showAndSave("Marker " + ToString(i) + " after warp", canonicalMarkerImage);
         }
 #endif
-
         int nRotations;
-        int id = Marker::getMarkerId(canonicalMarkerImage, nRotations);
-        if (id !=- 1)
+        int id=Marker::CheckMarker(canonicalMarkerImage, nRotations);
+        if((id==1)||(id==2))
         {
             marker.id = id;
             //sort the points so that they are always in the same order no matter the camera orientation
@@ -310,6 +319,15 @@ void MarkerDetector::recognizeMarkers(const cv::Mat& grayscale, std::vector<Mark
 
             goodMarkers.push_back(marker);
         }
+        //int id = Marker::getMarkerId(canonicalMarkerImage, nRotations);
+//        if (id !=- 1)
+//        {
+//            marker.id = id;
+//            //sort the points so that they are always in the same order no matter the camera orientation
+//            std::rotate(marker.points.begin(), marker.points.begin() + 4 - nRotations, marker.points.end());
+
+//            goodMarkers.push_back(marker);
+//        }
     }  
 
     // Refine marker corners using sub pixel accuracy
@@ -355,7 +373,16 @@ void MarkerDetector::recognizeMarkers(const cv::Mat& grayscale, std::vector<Mark
         cv::showAndSave("Markers refined edges", grayscale * 0.5 + markerCornersMat);
     }
 #endif
+    cv::Mat markerCornersMat(grayscale.size(), grayscale.type());
+    markerCornersMat = cv::Scalar(0);
 
+    for (size_t i=0; i<goodMarkers.size(); i++)
+    {
+        goodMarkers[i].drawContour(markerCornersMat, cv::Scalar(255));
+    }
+    //cv::imshow("grayscale",grayscale);
+    //cv::imshow("marker",markerCornersMat);
+    cv::imshow("Markers refined edges", grayscale * 0.5 + markerCornersMat);
     detectedMarkers = goodMarkers;
 }
 
@@ -379,7 +406,15 @@ void MarkerDetector::estimatePosition(std::vector<Marker>& detectedMarkers)
         cv::Mat Rvec;
         cv::Mat_<float> Tvec;
         cv::Mat raux,taux;
-        cv::solvePnP(m_markerCorners3d, m.points, camMatrix, distCoeff,raux,taux);
+        //cv::solvePnP(m_markerCorners3d, m.points, camMatrix, distCoeff,raux,taux);
+        if(m.id==1)
+        {
+            cv::solvePnP(largeMarker3d, m.points, camMatrix, distCoeff,raux,taux);
+        }
+        else if(m.id==2)
+        {
+            cv::solvePnP(smallMarker3d, m.points, camMatrix, distCoeff,raux,taux);
+        }
         raux.convertTo(Rvec,CV_32F);
         taux.convertTo(Tvec ,CV_32F);
 
@@ -398,5 +433,6 @@ void MarkerDetector::estimatePosition(std::vector<Marker>& detectedMarkers)
 
         // Since solvePnP finds camera location, w.r.t to marker pose, to get marker pose w.r.t to the camera we invert it.
         m.transformation = m.transformation.getInverted();
+        m.transformation.id()=m.id;
     }
 }

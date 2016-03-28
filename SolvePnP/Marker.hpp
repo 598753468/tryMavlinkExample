@@ -38,7 +38,9 @@ public:
   static int hammDistMarker(cv::Mat bits);
   static int mat2id(const cv::Mat &bits);
   static int getMarkerId(cv::Mat &in,int &nRotations);
-  
+
+  static int MarkerConfirm(cv::Mat bits);
+  static int CheckMarker(cv::Mat &markerImage,int &nRotations);
 public:
   
   // Id of  the marker
@@ -51,6 +53,8 @@ public:
 
   // Helper function to draw the marker contour over the image
   void drawContour(cv::Mat& image, cv::Scalar color = CV_RGB(0,250,0)) const;
+
+  static cv::Mat bigMarker,smallMarker;
 };
 
 #endif

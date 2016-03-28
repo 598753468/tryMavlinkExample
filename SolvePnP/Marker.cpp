@@ -12,7 +12,9 @@
 
 #include "Marker.hpp"
 #include "DebugHelpers.hpp"
-
+cv::Mat Marker::bigMarker=(cv::Mat_<uchar>(3,3)<<0,0,1,1,0,0,1,0,1);
+cv::Mat Marker::smallMarker=(cv::Mat_<uchar>(3,3)<<1,0,1,1,1,0,1,0,0);
+//cv::Mat Marker::bigMarker(3,3,CV_8UC1),Marker::smallMarker(3,3,CV_8UC1);
 Marker::Marker()
 : id(-1)
 {
@@ -73,6 +75,30 @@ int Marker::hammDistMarker(cv::Mat bits)
   return dist;
 }
 
+int Marker::MarkerConfirm(cv::Mat bits)
+{
+    //std::cout<<bits.channels()<<"\t"<<bigMarker.channels()<<"\t"<<bits.depth()<<"\t"<<bigMarker.depth()<<std::endl;
+    if(cv::countNonZero(bits==smallMarker)==9)
+    {
+        return 2;
+    }
+    else
+    {
+        //bits.at<uchar>(1,1)=0;
+        int n=cv::countNonZero(bits==bigMarker);
+        //std::cout<<bits<<std::endl;
+        if(n>=8)
+        {
+            return 1;
+        }
+        else
+        {
+            return -1;
+        }
+    }
+    return -1;
+}
+
 int Marker::mat2id(const cv::Mat &bits)
 {
   int val=0;
@@ -92,9 +118,19 @@ int Marker::getMarkerId(cv::Mat &markerImage,int &nRotations)
   assert(markerImage.type() == CV_8UC1);
   
   cv::Mat grey = markerImage;
-
+  long int average=0;
+  for(int row=0;row<markerImage.rows;row++)
+  {
+      uchar* p=markerImage.ptr(row);
+      for(int col=0;col<markerImage.cols;col++)
+      {
+          average=average+*(p+col);
+      }
+  }
+  average=average/(markerImage.rows*markerImage.cols);
+    average=(average+128)/2;
   // Threshold image
-  cv::threshold(grey, grey, 125, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+  cv::threshold(grey, grey, average, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
 
 #ifdef SHOW_DEBUG_IMAGES
   cv::showAndSave("Binary marker", grey);
@@ -182,4 +218,100 @@ void Marker::drawContour(cv::Mat& image, cv::Scalar color) const
     cv::line(image, points[1], points[2], color, thickness, CV_AA);
     cv::line(image, points[2], points[3], color, thickness, CV_AA);
     cv::line(image, points[3], points[0], color, thickness, CV_AA);
+}
+
+int Marker::CheckMarker(cv::Mat &markerImage,int &nRotations)
+{
+    assert(markerImage.rows == markerImage.cols);
+    assert(markerImage.type() == CV_8UC1);
+
+    cv::Mat grey = markerImage;
+    long int average=0;
+    for(int row=0;row<markerImage.rows;row++)
+    {
+        uchar* p=markerImage.ptr(row);
+        for(int col=0;col<markerImage.cols;col++)
+        {
+            average=average+*(p+col);
+        }
+    }
+    average=average/(markerImage.rows*markerImage.cols);
+
+    // Threshold image
+    cv::threshold(grey, grey, average, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+
+  #ifdef SHOW_DEBUG_IMAGES
+    cv::showAndSave("Binary marker", grey);
+  #endif
+
+    //Markers  are divided in 5x5 regions, of which the inner 3x3 belongs to marker info
+    //the external border should be entirely black
+
+    int cellSize = markerImage.rows / 5;
+
+    for (int y=0;y<5;y++)
+    {
+      int inc=4;
+
+      if (y==0 || y==4) inc=1; //for first and last row, check the whole border
+
+      for (int x=0;x<5;x+=inc)
+      {
+        int cellX = x * cellSize;
+        int cellY = y * cellSize;
+        cv::Mat cell = grey(cv::Rect(cellX,cellY,cellSize,cellSize));
+
+        int nZ = cv::countNonZero(cell);
+
+        if (nZ > (cellSize*cellSize) / 2)
+        {
+          return -1;//can not be a marker because the border element is not black!
+        }
+      }
+    }
+
+    cv::Mat bitMatrix = cv::Mat::zeros(3,3,CV_8UC1);
+
+    //get information(for each inner square, determine if it is  black or white)
+    for (int y=0;y<3;y++)
+    {
+      for (int x=0;x<3;x++)
+      {
+        int cellX = (x+1)*cellSize;
+        int cellY = (y+1)*cellSize;
+        cv::Mat cell = grey(cv::Rect(cellX,cellY,cellSize,cellSize));
+
+        int nZ = cv::countNonZero(cell);
+        if (nZ> (cellSize*cellSize) /2)
+          bitMatrix.at<uchar>(y,x) = 1;
+      }
+    }
+
+    //check all possible rotations
+    cv::Mat rotations[4];
+    int result[4];
+
+    rotations[0] = bitMatrix;
+    result[0] = MarkerConfirm(rotations[0]);
+
+    //std::pair<int,int> minDist(result[0],0);
+
+    for (int i=1; i<4; i++)
+    {
+      //get the hamming distance to the nearest possible word
+      rotations[i] = rotate(rotations[i-1]);
+      result[i] = MarkerConfirm(rotations[i]);
+      if(result[i]==1)
+      {
+          nRotations=i;
+          return 1;
+      }
+      else if(result[i]==2)
+      {
+          nRotations=i;
+          return 2;
+      }
+    }
+
+    return -1;
 }

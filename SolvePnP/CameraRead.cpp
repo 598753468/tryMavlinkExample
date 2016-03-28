@@ -20,20 +20,21 @@ CameraRead::isImageGot,
 CameraRead::isMarkerCatched,
 CameraRead::isCameraBusy,
 CameraRead::isWindowBusy,
-CameraRead::ChangeToLittleMarker;
-double CameraRead::positionX,
-CameraRead::positionY,
-CameraRead::positionZ,
-CameraRead::radX,
-CameraRead::radY,
-CameraRead::radZ,
-CameraRead::degreeX,
-CameraRead::degreeY,
-CameraRead::degreeZ,
+CameraRead::ChangeToLittleMarker,
+CameraRead::isLargeMarkerValid,
+CameraRead::isSmallMarkerValid;
+double
+//CameraRead::positionX,
+//CameraRead::positionY,
+//CameraRead::positionZ,
+//CameraRead::radX,
+//CameraRead::radY,
+//CameraRead::radZ,
+//CameraRead::degreeX,
+//CameraRead::degreeY,
+//CameraRead::degreeZ,
 CameraRead::xPoint,
-CameraRead::yPoint,
-CameraRead::largeMarkerSize,
-CameraRead::littleMarkerSize;
+CameraRead::yPoint;
 CameraCalibration CameraRead::calibration(fc1,fc2,cc1,cc2,distorsionCoeff);
 MarkerDetector CameraRead::markerDetector(calibration);
 cv::Mat_<float> CameraRead::srcMat=cv::Mat_<float>(3,3);
@@ -46,26 +47,25 @@ BGRAVideoFrame CameraRead::frame;
 std::vector<Transformation> CameraRead::trans;
 std::vector<Transformation>::iterator CameraRead::tr;
 double CameraRead::currentTime,CameraRead::lastTime;
+FoundMarker CameraRead::smallMarker,
+CameraRead::largeMarker;
 /////////////public///////////////////
 
 void CameraRead::SetMarkerSize(double LargeMarkerSize, double LittleMarkerSize)
 {
-    largeMarkerSize=LargeMarkerSize;
-    littleMarkerSize=LittleMarkerSize;
-    markerDetector.ChangeMarkerSize(LargeMarkerSize);
+    markerDetector.ChangeMarkerSize(LargeMarkerSize,LittleMarkerSize);
 }
 
-void CameraRead::ChangeToLargeMarker()
-{
-    markerDetector.ChangeMarkerSize(largeMarkerSize);
-}
+
 
 bool CameraRead::Init()
 {
-    cap.open(0);
+    cap.open(1);
+//    cap.set(CV_CAP_PROP_FRAME_WIDTH,1280);
+//    cap.set(CV_CAP_PROP_FRAME_HEIGHT,720);
     if(!cap.isOpened())
     {
-        //cout << "无法打开摄像头"<<endl;
+        cout << "无法打开摄像头"<<endl;
         return false;
     }
     else
@@ -102,51 +102,63 @@ bool CameraRead::stop()
     return true;
 }
 
-
-double CameraRead::PositionX()
+FoundMarker CameraRead::SmallMarker()
 {
-    return  positionX;
+    isSmallMarkerValid=false;
+    return smallMarker;
 }
 
-double CameraRead::PositionY()
+FoundMarker CameraRead::LargeMarker()
 {
-    return positionY;
+    isLargeMarkerValid=false;
+    return largeMarker;
 }
 
-double CameraRead::PositionZ()
-{
-    return positionZ;
-}
 
-double CameraRead::RadX()
-{
-    return radX;
-}
+//double CameraRead::PositionX()
+//{
+//    return  positionX;
+//}
 
-double CameraRead::RadY()
-{
-    return radY;
-}
+//double CameraRead::PositionY()
+//{
+//    return positionY;
+//}
 
-double CameraRead::RadZ()
-{
-    return radZ;
-}
+//double CameraRead::PositionZ()
+//{
+//    return positionZ;
+//}
 
-double CameraRead::DegreeX()
-{
-    return degreeX;
-}
+//double CameraRead::RadX()
+//{
+//    return radX;
+//}
 
-double CameraRead::DegreeY()
-{
-    return degreeY;
-}
+//double CameraRead::RadY()
+//{
+//    return radY;
+//}
 
-double CameraRead::DegreeZ()
-{
-    return degreeZ;
-}
+//double CameraRead::RadZ()
+//{
+//    return radZ;
+//}
+
+//double CameraRead::DegreeX()
+//{
+//    return degreeX;
+//}
+
+//double CameraRead::DegreeY()
+//{
+//    return degreeY;
+//}
+
+//double CameraRead::DegreeZ()
+//{
+//    return degreeZ;
+//}
 
 double CameraRead::XPoint()
 {
@@ -171,6 +183,17 @@ bool CameraRead::IsImageGot()
 bool CameraRead::IsMarkerCatched()
 {
     return isMarkerCatched;
+}
+
+
+bool CameraRead::IsLargeMarkerValid()
+{
+    return isLargeMarkerValid;
+}
+
+bool CameraRead::IsSmallMarkerValid()
+{
+    return isSmallMarkerValid;
 }
 
 
@@ -217,27 +240,27 @@ void CameraRead::OnTime_Handle(int)
             {
                 isMarkerCatched=false;
             }
-            if((count==1)&&ChangeToLittleMarker)
-            {
-                markerDetector.ChangeMarkerSize(littleMarkerSize);
-            }
-            else
-            {
-                markerDetector.ChangeMarkerSize(largeMarkerSize);
-            }
-            if(count==2)
-            {
-                ChangeMarkerSizeCount++;
-            }
-            else
-            {
-                ChangeMarkerSizeCount=0;
-            }
+//            if((count==1)&&ChangeToLittleMarker)
+//            {
+//                markerDetector.ChangeMarkerSize(littleMarkerSize);
+//            }
+//            else
+//            {
+//                markerDetector.ChangeMarkerSize(largeMarkerSize);
+//            }
+//            if(count==2)
+//            {
+//                ChangeMarkerSizeCount++;
+//            }
+//            else
+//            {
+//                ChangeMarkerSizeCount=0;
+//            }
 
-            if(ChangeMarkerSizeCount>5)
-            {
-                ChangeToLittleMarker=true;
-            }
+//            if(ChangeMarkerSizeCount>5)
+//            {
+//                ChangeToLittleMarker=true;
+//            }
 
             //cout<<"find "<<count<<"\t"<<currentTime-lastTime<<"\t"<<input.cols<<"\t"<<input.rows<<"\t"<<""<<"\t"<<""<<endl;
             for(tr=trans.begin();tr!=trans.end();tr++)
@@ -250,23 +273,31 @@ void CameraRead::OnTime_Handle(int)
                     }
                 }
                 Rodrigues(srcMat,dstMat);
-                radX=dstMat(0,0);
-                radY=dstMat(0,1);
-                radZ=dstMat(0,2);
-                degreeX=radX*180/pi;
-                degreeY=radY*180/pi;
-                degreeZ=radZ*180/pi;
-                if(count==1)
+                if(tr.base()->id()==1)
                 {
-                    positionX=tr.base()->t().data[0];
-                    positionY=tr.base()->t().data[1];
-                    positionZ=tr.base()->t().data[2];
+                    largeMarker.radX=dstMat(0,0);
+                    largeMarker.radY=dstMat(0,1);
+                    largeMarker.radZ=dstMat(0,2);
+                    largeMarker.degreeX=largeMarker.radX*180/pi;
+                    largeMarker.degreeY=largeMarker.radY*180/pi;
+                    largeMarker.degreeZ=largeMarker.radZ*180/pi;
+                    largeMarker.x=tr.base()->t().data[0];
+                    largeMarker.y=tr.base()->t().data[1];
+                    largeMarker.z=tr.base()->t().data[2];
+                    isSmallMarkerValid=true;
                 }
-                else if((tr.base()->t().data[2]>=(-3))&&(tr.base()->t().data[2]<=(-1)))
+                else if(tr.base()->id()==2)
                 {
-                    positionX=tr.base()->t().data[0];
-                    positionY=tr.base()->t().data[1];
-                    positionZ=tr.base()->t().data[2];
+                    smallMarker.radX=dstMat(0,0);
+                    smallMarker.radY=dstMat(0,1);
+                    smallMarker.radZ=dstMat(0,2);
+                    smallMarker.degreeX=smallMarker.radX*180/pi;
+                    smallMarker.degreeY=smallMarker.radY*180/pi;
+                    smallMarker.degreeZ=smallMarker.radZ*180/pi;
+                    smallMarker.x=tr.base()->t().data[0];
+                    smallMarker.y=tr.base()->t().data[1];
+                    smallMarker.z=tr.base()->t().data[2];
+                    isLargeMarkerValid=true;
                 }
 
                 xPoint=markerDetector.xPoints;

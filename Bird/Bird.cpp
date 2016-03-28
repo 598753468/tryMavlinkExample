@@ -27,20 +27,28 @@ void Bird::Start()
     if(!serialPort->isOpen())
     {
         std::cout<<"ERROR: serial port not open!"<<std::endl;
-        throw 1;
+        //throw 1;
+        return;
     }
+    isComLocked=false;
     pthread_create(&readThreadID,NULL,&StartBirdReadThread,this);
 }
 
-void Bird::SendCommand(Command1 command1,unsigned char command2,short int value)
+void Bird::Stop()
+{
+    timeToExit=true;
+    serialPort->close();
+}
+
+void Bird::SendCommand(Command1 command1,unsigned char command2,int16_t value)
 {
     currentCommand.head=head;
-    currentCommand.address=0x01;/////////////////
+    currentCommand.address=0x07;/////////////////
     currentCommand.command1=command1;
     currentCommand.command2=command2;
     currentCommand.value=value;
     currentCommand.check=CheckSum(currentCommand);
-    WriteMessage(currentMessage);
+    WriteMessage(currentCommand);
 }
 
 bool Bird::IsFocalNew()
@@ -118,7 +126,13 @@ void Bird::WriteMessage(BirdMessage message)
     int size=sizeof(BirdMessage);
     char buffer[size];
     memcpy(buffer,&message,size);
-    serialPort->write(buffer);
+    while(isComLocked)
+    {
+        usleep(100);
+    }
+    isComLocked=true;
+    serialPort->write(buffer,sizeof(buffer));
+    isComLocked=false;
     //serialPort->_write_port(buffer,&size);
 }
 
@@ -128,7 +142,20 @@ unsigned char Bird::CheckSum(BirdMessage message)
     int messageSize=sizeof(BirdMessage);
     memcpy(bytes,&message,messageSize);
     unsigned char check=bytes[0];
-    for(int i=1;i<messageSize-2;i++)
+    for(int i=1;i<messageSize-1;i++)
+    {
+        check=check^bytes[i];
+    }
+    return check;
+}
+
+unsigned char Bird::CheckSum(BirdMessageLarge messageLarge)
+{
+    unsigned char bytes[1000];
+    int messageLargeSize=sizeof(BirdMessageLarge);
+    memcpy(bytes,&messageLarge,messageLargeSize);
+    unsigned char check=bytes[0];
+    for(int i=1;i<messageLargeSize-1;i++)
     {
         check=check^bytes[i];
     }
@@ -160,15 +187,29 @@ void Bird::read_thread()
     return;
 }
 
+void Bird::ByteConventer(char* byte)
+{
+    char a=*byte;
+    *byte=*(byte+1);
+    *(byte+1)=a;
+}
+
 void Bird::read_messages()
 {
     int ret=0;
     int messageSize=sizeof(BirdMessage);
+    int messageLargeSize=sizeof(BirdMessageLarge);
     char bytesToRead[1024];
     char *readByte;
     BirdMessage message;
-
-    ret=serialPort->read(bytesToRead,1024);
+    BirdMessageLarge messageLarge;
+    while(isComLocked)
+    {
+        usleep(100);
+    }
+    isComLocked=true;
+    ret=serialPort->read(bytesToRead,128);
+    isComLocked=false;
     readByte=bytesToRead;
     if(ret!=-1)
     {
@@ -176,72 +217,104 @@ void Bird::read_messages()
         {
             if(((unsigned char)*readByte)==head)
             {
-                memcpy(&message,readByte,messageSize);
-                if(message.check==CheckSum(message))
+                switch(*(readByte+1))
                 {
-                    switch(message.command1)
+                case 7:
+                    memcpy(&message,readByte,messageSize);
+                    if(message.check==CheckSum(message))
                     {
-                    case VisibleLightCamera:
-                        if(message.command2==GetFocal)
+                        switch(message.command1)
                         {
-                            focal=message.value/100.0;
+                        case VisibleLightCamera:
+                            if(message.command2==GetFocal)
+                            {
+                                focal=message.value/100.0;
+                                isFocalNew=true;
+                            }
+                            break;
+                        case SelfCheck:
+                            if(message.command2==SelfCheckReturn)
+                            {
+                                selfCheckMessage=message.value;
+                                isSelfCheckMessageNew=true;
+                            }
+                            break;
+                        case BirdRotate:
+                            switch(message.command2)
+                            {
+                            case PitchReturn:
+                                pitch=message.value/100.0;
+                                isPitchNew=true;
+                                break;
+                            case YawReturn:
+                                yaw=message.value/100.0;
+                                isYawNew=true;
+                                break;
+                            }
+                            break;
+                        case SystemWorkMode:
+                            if(message.command2==SystemWorkModeReturn)
+                            {
+                                workModeMessage=message.value;
+                                isWorkModeNew=true;
+                            }
+                            break;
+                        case DistanceMeasurement:
+                            switch(message.command2)
+                            {
+                            //char dist[2];
+                            //char turn;
+                            case SingleReturn:
+                                isMultiDistanceMeasurement=false;
+                                //GetDistance()
+                                //memcpy(dist,message.value,2);
+                                distanceMessage=message.value;
+                                isDistanceNew=true;
+                                break;
+                            case MultiReturn:
+                                isMultiDistanceMeasurement=true;
+                                distanceMessage=message.value;
+                                isDistanceNew=true;
+                                break;
+                            }
+                            break;
+                        }
+                    }
+                    if(ret>messageSize)
+                    {
+                        readByte=readByte+messageSize;
+                    }
+                    ret=ret-messageSize;
+                    break;
+                case 11:
+                    if(ret>=messageLargeSize)
+                    {
+                        //双字节数据低位在后，高位在前
+                        ByteConventer(readByte+2);
+                        ByteConventer(readByte+4);
+                        ByteConventer(readByte+6);
+                        ByteConventer(readByte+8);
+                        memcpy(&messageLarge,readByte,messageLargeSize);
+                        if(messageLarge.check==CheckSum(messageLarge))
+                        {
+                            pitch=messageLarge.pitch/100.0;
+                            yaw=messageLarge.yaw/100.0;
+                            distanceMessage=messageLarge.distance;
+                            focal=messageLarge.focus/10.0;
+                            isPitchNew=true;
+                            isYawNew=true;
+                            isDistanceNew=true;
                             isFocalNew=true;
                         }
-                        break;
-                    case SelfCheck:
-                        if(message.command2==SelfCheckReturn)
-                        {
-                            selfCheckMessage=message.value;
-                            isSelfCheckMessageNew=true;
-                        }
-                        break;
-                    case BirdRotate:
-                        switch(message.command2)
-                        {
-                        case PitchReturn:
-                            pitch=message.value/100.0;
-                            isPitchNew=true;
-                            break;
-                        case YawReturn:
-                            yaw=message.value/100.0;
-                            isYawNew=true;
-                            break;
-                        }
-                        break;
-                    case SystemWorkMode:
-                        if(message.command2==SystemWorkModeReturn)
-                        {
-                            workModeMessage=message.value;
-                            isWorkModeNew=true;
-                        }
-                        break;
-                    case DistanceMeasurement:
-                        switch(message.command2)
-                        {
-                        //char dist[2];
-                        //char turn;
-                        case SingleReturn:
-                            isMultiDistanceMeasurement=false;
-                            //GetDistance()
-                            //memcpy(dist,message.value,2);
-                            distanceMessage=message.value;
-                            isDistanceNew=true;
-                            break;
-                        case MultiReturn:
-                            isMultiDistanceMeasurement=true;
-                            distanceMessage=message.value;
-                            isDistanceNew=true;
-                            break;
-                        }
-                        break;
                     }
+                    if(ret>messageLargeSize)
+                    {
+                        readByte=readByte+messageLargeSize;
+                    }
+                    ret=ret-messageLargeSize;
+                    break;
+                }
 
-                }
-                if(ret>messageSize)
-                {
-                    readByte=readByte+messageSize;
-                }
-                ret=ret-messageSize;
             }
             else
             {

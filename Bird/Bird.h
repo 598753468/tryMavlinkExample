@@ -17,6 +17,18 @@ struct BirdMessage
     int16_t value;
     unsigned char check;
 };
+
+struct BirdMessageLarge
+{
+    unsigned char head;
+    unsigned char address;
+    int16_t yaw;
+    int16_t pitch;
+    int16_t distance;
+    int16_t focus;
+    unsigned char check;
+};
+
 #pragma pack(pop)
 enum MessageEnum
 {
@@ -45,13 +57,14 @@ enum birdRotate
 
 enum inertialSpace
 {
-    RollAxis=0x01,
+    YawAxis=0x01,
+    PitchAxis=0x02,
 };
 
 enum selfCheck
 {
-    SelfcheckCommand=0xFF,
-    SelfCheckReturn=0xFE
+    SelfcheckCommand=0x01,
+    SelfCheckReturn=0xFE,
 };
 
 enum visibleLightCamera
@@ -63,7 +76,7 @@ enum visibleLightCamera
 
 enum systemWorkMode
 {
-    workMode=0x01
+    WorkMode=0x01
 };
 
 enum trackingBox
@@ -87,15 +100,16 @@ enum systemStatus
 {
     Stop=0x01,
     Start=0x02,
-
 };
 
 enum workMode
 {
     Manual=1,
     Tracking =2,
+    Landing=3,
     SystemWorkModeReturn=0xFE,
 };
+
 
 //helper functions
 void*StartBirdReadThread(void *args);
@@ -113,7 +127,7 @@ public:
     Bird(Posix_QextSerialPort *serialPort);
     void Start();
     void Stop();
-    void SendCommand(Command1 command1,unsigned char command2,short int value);
+    void SendCommand(Command1 command1,unsigned char command2,int16_t value);
     void start_read_thread();
     void read_messages();
 //        ///
@@ -145,6 +159,8 @@ public:
     int16_t DistanceMessage();
 private:
     //Serial_Port *serialPort;
+    bool isComLocked;
+    void ByteConventer(char* byte);
     float focal,pitch,yaw;
     int16_t selfCheckMessage,workModeMessage,distanceMessage;
     bool isFocalNew,
@@ -160,6 +176,7 @@ private:
     pthread_t writeThreadID;
     void WriteMessage(BirdMessage message);
     unsigned char CheckSum(BirdMessage message);
+    unsigned char CheckSum(BirdMessageLarge messageLarge);
     void read_thread();
     //int16_t GetDistance(int16_t source);
 };
